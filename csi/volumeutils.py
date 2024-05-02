@@ -850,39 +850,41 @@ def volume_list(voltype=None):
 def mount_volume(pvpath, mountpoint, pvtype, fstype=None):
     """Mount a Volume"""
 
-    if not os.path.ismount(mountpoint):
-        # Create subvol dir if PV is manually created
-        if not os.path.exists(pvpath):
-            makedirs(pvpath)
+    if os.path.ismount(mountpoint):
+        return True
 
-        # TODO: Will losetup survive container reboot?
-        if pvtype == PV_TYPE_RAWBLOCK:
-            # losetup of truncated file
-            cmd = ["losetup", "-f", "--show", pvpath]
-            try:
-                loop, _, _ = execute(*cmd)
-            except CommandException as err:
-                # Better not to create loop devices manually
-                errmsg = "Please check availability of 'losetup' and 'loop' device"
-                logging.error(logf(errmsg, cmd=cmd, error=format(err)))
-                return False
+    # Create subvol dir if PV is manually created
+    if not os.path.exists(pvpath):
+        makedirs(pvpath)
 
-            # Bind mount loop device to target_path, stage_path may not be needed
-            makedirs(os.path.dirname(mountpoint))
-            Path(mountpoint).touch(mode=0o777)
-            execute(MOUNT_CMD, "--bind", loop, mountpoint)
-            return True
+    # TODO: Will losetup survive container reboot?
+    if pvtype == PV_TYPE_RAWBLOCK:
+        # losetup of truncated file
+        cmd = ["losetup", "-f", "--show", pvpath]
+        try:
+            loop, _, _ = execute(*cmd)
+        except CommandException as err:
+            # Better not to create loop devices manually
+            errmsg = "Please check availability of 'losetup' and 'loop' device"
+            logging.error(logf(errmsg, cmd=cmd, error=format(err)))
+            return False
 
-        # Need this after kube 1.20.0
-        makedirs(mountpoint)
+        # Bind mount loop device to target_path, stage_path may not be needed
+        makedirs(os.path.dirname(mountpoint))
+        Path(mountpoint).touch(mode=0o777)
+        execute(MOUNT_CMD, "--bind", loop, mountpoint)
+        return True
 
-        if pvtype == PV_TYPE_VIRTBLOCK:
-            fstype = "xfs" if fstype is None else fstype
-            execute(MOUNT_CMD, "-t", fstype, pvpath, mountpoint)
-        else:
-            execute(MOUNT_CMD, "--bind", pvpath, mountpoint)
+    # Need this after kube 1.20.0
+    makedirs(mountpoint)
 
-        os.chmod(mountpoint, 0o777)
+    if pvtype == PV_TYPE_VIRTBLOCK:
+        fstype = "xfs" if fstype is None else fstype
+        execute(MOUNT_CMD, "-t", fstype, pvpath, mountpoint)
+    else:
+        execute(MOUNT_CMD, "--bind", pvpath, mountpoint)
+
+    os.chmod(mountpoint, 0o777)
     return True
 
 
